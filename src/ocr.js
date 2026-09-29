@@ -1,4 +1,111 @@
-const { fetch } = globalThis;
+/**
+ * OCR extraction module.
+ * Parses nutrition labels in multiple languages (German, Dutch, Italian, English).
+ */
+
+/**
+ * Parses OCR text into structured nutrition data.
+ * Handles multilingual nutrition labels.
+ * @param {string} text - The OCR text from the image
+ * @returns {Object} - Structured nutrition data
+ */
+export function parseNutritionTable(text) {
+  const result = {};
+
+  const lines = text.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Energy line: "Energie 2292 kJ / 549 kcal" or similar
+    // Match patterns like: "Energie\t2292 kJ / 549 kcal"
+    const energyMatch = trimmed.match(/(?:energie|energia|energy)\s*(?:per|pro|per\s+\d+\s*(?:g|ml))?\s*(?:\d+\s*(?:g|ml)\s*(?:\/|–|-))?\s*(\d+[.,]?\d*)\s*(?:kj|kJ)\s*(?:\/|–|-)\s*(\d+[.,]?\d*)\s*(?:kcal|kCal)/i);
+    if (energyMatch) {
+      result.energy = { value: parseFloat(energyMatch[1].replace(',', '.')), unit: 'kJ' };
+      result.energyKcal = { value: parseFloat(energyMatch[2].replace(',', '.')), unit: 'kcal' };
+      continue;
+    }
+
+    // Also try: "energie 199 kJ / 47 kcal" (Dutch style, lowercase)
+    const energyMatch2 = trimmed.match(/(?:energie|energia|energy)\s*(\d+[.,]?\d*)\s*(?:kj|kJ)\s*(?:\/|–|-)\s*(\d+[.,]?\d*)\s*(?:kcal|kCal)/i);
+    if (energyMatch2) {
+      result.energy = { value: parseFloat(energyMatch2[1].replace(',', '.')), unit: 'kJ' };
+      result.energyKcal = { value: parseFloat(energyMatch2[2].replace(',', '.')), unit: 'kcal' };
+      continue;
+    }
+
+    // Fat: "Fett 33 g" or "vetten 0 g" or "grassi 0 g"
+    const fatMatch = trimmed.match(/(?:fett|vetten|grassi|matières grasses)\s*(?:,\s*(?:davon|waarvan|di\s+essi|dont))?\s*(\d+[.,]?\d*)\s*g/i);
+    if (fatMatch) {
+      result.fat = { value: parseFloat(fatMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Saturated fat: "davon gesättigte Fettsäuren 13 g" or "waarvan verzadigde vetzuren 0 g"
+    const satFatMatch = trimmed.match(/(?:davon|waarvan|di\s+essi|dont)\s*(?:gesättigte\s+fettsäuren|verzadigde\s+vetzuren|acidi\s+grassi\s+saturi|acides\s+gras\s+saturés)\s*(\d+[.,]?\d*)\s*g/i);
+    if (satFatMatch) {
+      result.saturatedFat = { value: parseFloat(satFatMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Carbohydrates: "Kohlenhydrate 55 g" or "koolhydraten 11 g"
+    const carbMatch = trimmed.match(/(?:kohlenhydrate|koolhydraten|carboidrati|glucides|carbohydrates)\s*(?:,\s*(?:davon|waarvan|di\s+essi|dont))?\s*(\d+[.,]?\d*)\s*g/i);
+    if (carbMatch) {
+      result.carbohydrates = { value: parseFloat(carbMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Sugars: "davon Zucker 45 g" or "waarvan suikers 10 g"
+    const sugarMatch = trimmed.match(/(?:davon|waarvan|di\s+essi|dont)\s*(?:zucker|suikers|zuccheri|sucres|zucchero)\s*(\d+[.,]?\d*)\s*g/i);
+    if (sugarMatch) {
+      result.sugars = { value: parseFloat(sugarMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Fiber: "Ballaststoffe 2,4 g" or "vezels 0,7 g" or "fibra 0 g"
+    const fiberMatch = trimmed.match(/(?:ballaststoffe|vezels|fibra|fibres|fiber)\s*(\d+[.,]?\d*)\s*g/i);
+    if (fiberMatch) {
+      result.fiber = { value: parseFloat(fiberMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Protein: "Eiweiß 6,8 g" or "eiwitten 0,4 g" or "proteine 0 g"
+    const proteinMatch = trimmed.match(/(?:eiweiß|eiweiss|eiwitten|proteine|proteins|proteine)\s*(\d+[.,]?\d*)\s*g/i);
+    if (proteinMatch) {
+      result.protein = { value: parseFloat(proteinMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Sodium/Salt: "Salz 0,18 g" or "zout 0 g" or "sale 0 g"
+    const sodiumMatch = trimmed.match(/(?:salz|zout|sale|sel|sodium)\s*(\d+[.,]?\d*)\s*g/i);
+    if (sodiumMatch) {
+      result.sodium = { value: parseFloat(sodiumMatch[1].replace(',', '.')), unit: 'g' };
+      continue;
+    }
+
+    // Check for custom components (anything with a value and unit)
+    // Pattern: "component_name 80 mg" or "component_name: 80 mg"
+    const customMatch = trimmed.match(/^([a-zA-ZäöüÄÖÜéèàùàèìòùéèàùàèìòù\s]+?)\s*[:\-]?\s*(\d+[.,]?\d*)\s*(g|mg|ml|%)\s*$/i);
+    if (customMatch) {
+      const name = customMatch[1].trim();
+      const value = parseFloat(customMatch[2].replace(',', '.'));
+      const unit = customMatch[3].toLowerCase();
+
+      // Skip lines that are headers or already parsed
+      if (name && !/(?:pro|per|nährwert|voedingswaarde|valore|nutrition|energy|energie|energia|fett|vetten|grassi|kohlenhydrate|koolhydraten|carboidrati|zucker|suikers|zuccheri|eiweiß|eiweiss|eiwitten|proteine|salz|zout|sale|ballast|vezels|fibra|davon|waarvan|di\s+essi|acidi|gesättigte|verzadigde|acids|grassi|saturi|saturés|glucides|sucres|zucchero|kcal|kj|per|pro|mg|ml|g|%)/i.test(name)) {
+        const key = name.toLowerCase().replace(/\s+/g, '');
+        // Avoid overwriting standard components
+        const standardKeys = ['energy', 'energykcal', 'fat', 'saturatedfat', 'carbohydrates', 'sugars', 'fiber', 'protein', 'sodium'];
+        if (!standardKeys.includes(key)) {
+          result[key] = { value, unit };
+        }
+      }
+    }
+  }
+
+  return result;
+}
 
 /**
  * Calls an OpenAI-compatible endpoint to extract nutrition data from an image.
@@ -8,7 +115,7 @@ const { fetch } = globalThis;
  */
 export async function extractNutrition(imageData, config) {
   const { url, key } = config;
-  
+
   let base64Image;
   if (imageData instanceof Buffer) {
     base64Image = imageData.toString('base64');
@@ -56,115 +163,4 @@ export async function extractNutrition(imageData, config) {
 
   const data = await response.json();
   return data.choices[0].message.content;
-}
-
-/**
- * Parses OCR text into structured nutrition data.
- * Handles multilingual nutrition labels (German, Dutch, Italian).
- * @param {string} text - The OCR text from the image
- * @returns {Object} - Structured nutrition data
- */
-export function parseNutritionTable(text) {
-  const result = {
-    energy: { kJ: 0, kcal: 0 },
-    fat: 0,
-    saturatedFat: 0,
-    carbohydrates: 0,
-    sugars: 0,
-    protein: 0,
-    sodium: 0,
-    // Custom components can be added dynamically
-  };
-
-  // Normalize text
-  const normalized = text.toLowerCase();
-
-  // Energy patterns - multilingual
-  // German: Energie, Dutch: energie, Italian: energia
-  const energyKcalMatch = normalized.match(/(?:energie|energia|energi)[^\d]*(\d+[.,]?\d*)\s*(?:kcal|kj)/i);
-  const energyKjMatch = normalized.match(/(?:energie|energia|energi)[^\d]*(\d+[.,]?\d*)\s*(?:kj|kcal)/i);
-  
-  // Try to find energy values with units
-  const energyLines = text.split('\n').filter(line => 
-    /(?:energie|energia|energi|energy)/i.test(line)
-  );
-  
-  for (const line of energyLines) {
-    const kcalMatch = line.match(/(\d+[.,]?\d*)\s*kcal/i);
-    const kjMatch = line.match(/(\d+[.,]?\d*)\s*kj/i);
-    if (kcalMatch) {
-      result.energy.kcal = parseFloat(kcalMatch[1].replace(',', '.'));
-    }
-    if (kjMatch) {
-      result.energy.kJ = parseFloat(kjMatch[1].replace(',', '.'));
-    }
-  }
-
-  // Fat patterns - multilingual
-  // German: Fett, Dutch: vet/vetten, Italian: grassi
-  const fatMatch = text.match(/(?:fett|matières grasses|vetten|grassi)[^\d]*(\d+[.,]?\d*)\s*g/i);
-  if (fatMatch) {
-    result.fat = parseFloat(fatMatch[1].replace(',', '.'));
-  }
-
-  // Saturated fat patterns
-  // German: gesättigte Fettsäuren, Dutch: verzadigde vetzuren, Italian: acidi grassi saturi
-  const satFatMatch = text.match(/(?:gesättigte fettsäuren|verzadigde vetzuren|acidi grassi saturi)[^\d]*(\d+[.,]?\d*)\s*g/i);
-  if (satFatMatch) {
-    result.saturatedFat = parseFloat(satFatMatch[1].replace(',', '.'));
-  }
-
-  // Carbohydrates patterns
-  // German: Kohlenhydrate, Dutch: koolhydraten, Italian: carboidrati
-  const carbMatch = text.match(/(?:kohlenhydrate|koolhydraten|carboidrati)[^\d]*(\d+[.,]?\d*)\s*g/i);
-  if (carbMatch) {
-    result.carbohydrates = parseFloat(carbMatch[1].replace(',', '.'));
-  }
-
-  // Sugars patterns
-  // German: Zucker, Dutch: suikers, Italian: zuccheri
-  const sugarMatch = text.match(/(?:zucker|suikers|zuccheri)[^\d]*(\d+[.,]?\d*)\s*g/i);
-  if (sugarMatch) {
-    result.sugars = parseFloat(sugarMatch[1].replace(',', '.'));
-  }
-
-  // Protein patterns
-  // German: Eiweiß/Eiweiss, Dutch: eiwitten, Italian: proteine
-  const proteinMatch = text.match(/(?:eiweiß|eiweiss|eiwitten|proteine|proteins)[^\d]*(\d+[.,]?\d*)\s*g/i);
-  if (proteinMatch) {
-    result.protein = parseFloat(proteinMatch[1].replace(',', '.'));
-  }
-
-  // Sodium/Salt patterns
-  // German: Salz, Dutch: zout, Italian: sale
-  const sodiumMatch = text.match(/(?:salz|sel|zout|sale)[^\d]*(\d+[.,]?\d*)\s*g/i);
-  if (sodiumMatch) {
-    result.sodium = parseFloat(sodiumMatch[1].replace(',', '.'));
-  }
-
-  // Check for custom components (anything with a value and unit)
-  const lines = text.split('\n');
-  for (const line of lines) {
-    // Skip lines we already parsed
-    if (/(?:energie|energia|energi|fett|vetten|grassi|gesättigte|verzadigde|acidi grassi|kohlenhydrate|koolhydraten|carboidrati|zucker|suikers|zuccheri|eiweiß|eiweiss|eiwitten|proteine|proteins|salz|sel|zout|sale)/i.test(line)) {
-      continue;
-    }
-    
-    // Look for pattern: component name followed by value and unit
-    const customMatch = line.match(/^\s*([a-zA-ZäöüÄÖÜéèàùàèìòùéèàùàèìòù\s]+?)\s*[:\-]?\s*(\d+[.,]?\d*)\s*(g|mg|mg|ml|%)\s*$/i);
-    if (customMatch) {
-      const name = customMatch[1].trim();
-      const value = parseFloat(customMatch[2].replace(',', '.'));
-      const unit = customMatch[3].toLowerCase();
-      
-      // Only add if not already a standard component
-      const standardComponents = ['energy', 'fat', 'saturatedfat', 'carbohydrates', 'sugars', 'protein', 'sodium'];
-      const key = name.toLowerCase().replace(/\s+/g, '');
-      if (!standardComponents.includes(key)) {
-        result[key] = value;
-      }
-    }
-  }
-
-  return result;
 }
