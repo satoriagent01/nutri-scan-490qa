@@ -1,0 +1,9 @@
+{
+  "name": "nutri-scan",
+  "version": "1.0.0",
+  "description": "Free, ad-free nutrition tracker with OCR from nutrition labels",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
