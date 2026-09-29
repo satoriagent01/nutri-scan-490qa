@@ -19,12 +19,10 @@ export function calculateNutrition(product, quantity) {
 
   for (const [key, value] of Object.entries(product.nutrition)) {
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      // Handle nested objects like energy: { kJ: 0, kcal: 0 }
-      result[key] = {};
-      for (const [nestedKey, nestedValue] of Object.entries(value)) {
-        if (typeof nestedValue === 'number') {
-          result[key][nestedKey] = nestedValue * factor;
-        }
+      // Handle nested objects like energy: { value: 2292, unit: "kJ" }
+      result[key] = { ...value };
+      if (typeof result[key].value === 'number') {
+        result[key].value = result[key].value * factor;
       }
     } else if (typeof value === 'number') {
       result[key] = value * factor;
@@ -49,17 +47,12 @@ export function sumNutrition(nutritionArray) {
 
     for (const [key, value] of Object.entries(nutrition)) {
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        // Handle nested objects like energy: { kJ: 0, kcal: 0 }
+        // Handle nested objects like energy: { value: 2292, unit: "kJ" }
         if (!result[key]) {
-          result[key] = {};
+          result[key] = { value: 0, unit: value.unit || '' };
         }
-        for (const [nestedKey, nestedValue] of Object.entries(value)) {
-          if (typeof nestedValue === 'number') {
-            if (!result[key][nestedKey]) {
-              result[key][nestedKey] = 0;
-            }
-            result[key][nestedKey] += nestedValue;
-          }
+        if (typeof value.value === 'number') {
+          result[key].value += value.value;
         }
       } else if (typeof value === 'number') {
         if (!result[key]) {
