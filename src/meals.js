@@ -35,7 +35,8 @@ export function createMeal(name, date) {
  * @param {string} mealId - Meal ID
  * @param {string} productId - Product ID
  * @param {number} quantity - Grams of the product
- * @returns {Object|null} - The added item or null if meal/product not found
+ * @returns {Object} - The added item
+ * @throws {Error} - If meal or product not found
  */
 export function addMealItem(mealId, productId, quantity) {
   const meal = meals.get(mealId);
@@ -65,12 +66,13 @@ export function addMealItem(mealId, productId, quantity) {
 /**
  * Gets the total nutrition for a meal by summing all items.
  * @param {string} mealId - Meal ID
- * @returns {Object|null} - Total nutrition or null if meal not found
+ * @returns {Object} - Total nutrition
+ * @throws {Error} - If meal not found
  */
 export function getMealTotal(mealId) {
   const meal = meals.get(mealId);
   if (!meal) {
-    return null;
+    throw new Error('Meal not found');
   }
 
   if (meal.items.length === 0) {
@@ -83,11 +85,11 @@ export function getMealTotal(mealId) {
 
 /**
  * Gets a meal by ID.
- * @param {string} id - Meal ID
+ * @param {string} mealId - Meal ID
  * @returns {Object|null} - The meal or null if not found
  */
-export function getMeal(id) {
-  return meals.get(id) || null;
+export function getMeal(mealId) {
+  return meals.get(mealId) || null;
 }
 
 /**
