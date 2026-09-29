@@ -19,8 +19,8 @@ export function createProduct(data) {
   const product = {
     id,
     name: data.name,
-    brand: data.brand || '',
-    nutrition: data.nutrition || {},
+    brand: data.brand,
+    nutrition: data.nutrition,
     createdAt: new Date().toISOString(),
   };
   products.set(id, product);
@@ -31,17 +31,21 @@ export function createProduct(data) {
  * Updates a product by ID.
  * @param {string} id - Product ID
  * @param {Object} data - Updated fields
- * @returns {Object|null} - The updated product or null if not found
+ * @returns {Object} - The updated product
+ * @throws {Error} - If product not found
  */
 export function updateProduct(id, data) {
   const product = products.get(id);
   if (!product) {
-    return null;
+    throw new Error(`Product not found: ${id}`);
   }
 
-  if (data.name !== undefined) product.name = data.name;
-  if (data.brand !== undefined) product.brand = data.brand;
-  if (data.nutrition !== undefined) product.nutrition = data.nutrition;
+  // Merge all provided fields into the product
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) {
+      product[key] = value;
+    }
+  }
 
   products.set(id, product);
   return product;
@@ -50,9 +54,14 @@ export function updateProduct(id, data) {
 /**
  * Deletes a product by ID.
  * @param {string} id - Product ID
- * @returns {boolean} - True if deleted, false if not found
+ * @returns {boolean} - True if deleted
+ * @throws {Error} - If product not found
  */
 export function deleteProduct(id) {
+  const product = products.get(id);
+  if (!product) {
+    throw new Error(`Product not found: ${id}`);
+  }
   return products.delete(id);
 }
 
