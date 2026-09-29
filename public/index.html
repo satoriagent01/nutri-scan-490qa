@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NutriScan - Nutrition Label Scanner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; color: #2e7d32; margin-bottom: 20px; }
+    h2 { color: #2e7d32; margin-bottom: 10px; }
+    .card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .btn { background: #2e7d32; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .btn:hover { background: #1b5e20; }
+    .btn-secondary { background: #555; }
+    .btn-secondary:hover { background: #333; }
+    input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; }
+    label { font-weight: bold; display: block; margin-bottom: 4px; }
+    .upload-area { border: 2px dashed #2e7d32; border-radius: 8px; padding: 40px; text-align: center; cursor: pointer; margin-bottom: 10px; }
+    .upload-area:hover { background: #e8f5e9; }
+    .preview { max-width: 100%; max-height: 300px; border-radius: 4px; margin: 10px 0; }
+    .nutrition-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .nutrition-item { background: #e8f5e9; padding: 10px; border-radius: 4px; text-align: center; }
+    .nutrition-item .value { font-size: 20px; font-weight: bold; color: #2e7d32; }
+    .nutrition-item .label { font-size: 12px; color: #666; }
+    .meal-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; }
+    .hidden { display: none; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .tab { padding: 10px 20px; background: #ddd; border-radius: 4px 4px 0 0; cursor: pointer; }
+    .tab.active { background: white; font-weight: bold; }
+    .config-section { background: #fff3e0; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🍎 NutriScan</h1>
+    <p style="text-align:center;color:#666;margin-bottom:20px;">Free, ad-free nutrition label scanner & meal planner</p>
+
+    <div class="config-section">
+      <h3>⚙️ AI Configuration</h3>
+      <label for="aiUrl">OpenAI-compatible API URL:</label>
+      <input type="text" id="aiUrl" placeholder="https://api.openai.com/v1/chat/completions">
+      <label for="apiKey">API Key:</label>
+      <input type="password" id="apiKey" placeholder="sk-...">
+      <button class="btn" onclick="saveConfig()">Save Configuration</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="showTab('scan')">📷 Scan</div>
+      <div class="tab" onclick="showTab('products')">📦 Products</div>
+      <div class="tab" onclick="showTab('meals')">🍽️ Meals</div>
+    </div>
+
+    <!-- Scan Tab -->
+    <div id="tab-scan">
+      <div class="card">
+        <h2>Scan Nutrition Label</h2>
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+          <p>Click to upload a nutrition label photo</p>
+          <p style="font-size:12px;color:#666;">or drag & drop an image</p>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" style="display:none" onchange="handleFileSelect(event)">
+        <img id="preview" class="preview hidden">
+        <button class="btn" onclick="scanLabel()" id="scanBtn" disabled>Scan Label</button>
+        <p id="scanStatus" style="margin-top:10px;color:#666;"></p>
+      </div>
+
+      <div class="card hidden" id="nutritionResult">
+        <h2>Extracted Nutrition</h2>
+        <div class="nutrition-grid" id="nutritionGrid"></div>
+        <button class="btn" onclick="saveAsProduct()" style="margin-top:15px;">Save as Product</button>
+      </div>
+    </div>
+
+    <!-- Products Tab -->
+    <div id="tab-products" class="hidden">
+      <div class="card">
+        <h2>Products</h2>
+        <div id="productList"></div>
+      </div>
+    </div>
+
+    <!-- Meals Tab -->
+    <div id="tab-meals" class="hidden">
+      <div class="card">
+        <h2>Create Meal</h2>
+        <input type="text" id="mealName" placeholder="Meal name (e.g., Breakfast)">
+        <input type="date" id="mealDate">
+        <button class="btn" onclick="createMeal()">Create Meal</button>
+      </div>
+
+      <div class="card hidden" id="mealDetail">
+        <h2 id="mealTitle">Meal</h2>
+        <p>Add product to meal:</p>
+        <select id="mealProductSelect"></select>
+        <input type="number" id="mealQuantity" placeholder="Quantity (grams)" min="0">
+        <button class="btn" onclick="addMealItem()">Add Item</button>
+        <div id="mealItems"></div>
+        <h3 style="margin-top:15px;">Total Nutrition</h3>
+        <div class="nutrition-grid" id="mealTotalGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentNutrition = null;
+    let currentMealId = null;
+    let config = JSON.parse(localStorage.getItem('nutriscan-config') || '{}');
+
+    if (config.url) document.getElementById('aiUrl').value = config.url;
+    if (config.key) document.getElementById('apiKey').value = config.key;
+
+    function saveConfig() {
+      config = {
+        url: document.getElementById('aiUrl').value,
+        key: document.getElementById('apiKey').value,
+      };
+      localStorage.setItem('nutriscan-config', JSON.stringify(config));
+      alert('Configuration saved!');
+    }
+
+    function showTab(tab) {
+      document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tab).classList.remove('hidden');
+      document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+      event.target.classList.add('active');
+      if (tab === 'products') loadProducts();
+      if (tab === 'meals') loadProductsForMealSelect();
+    }
+
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById('preview').src = e.target.result;
+        document.getElementById('preview').classList.remove('hidden');
+        document.getElementById('scanBtn').disabled = false;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function scanLabel() {
+      const fileInput = document.getElementById('fileInput');
+      if (!fileInput.files[0]) return;
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(',')[1];
+        try {
+          document.getElementById('scanStatus').textContent = 'Scanning...';
+          const response = await fetch(config.url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${config.key}`,
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [{
+                role: 'user',
+                content: [
+                  { type: 'text', text: 'Extract all nutritional information from this nutrition label. Return raw text exactly as it appears.' },
+                  { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+                ],
+              }],
+              max_tokens: 2000,
+            }),
+          });
+          const data = await response.json();
+          const text = data.choices[0].message.content;
+          parseAndDisplayNutrition(text);
+        } catch (err) {
+          document.getElementById('scanStatus').textContent = 'Error: ' + err.message;
+        }
+      };
+      reader.readAsDataURL(fileInput.files[0]);
+    }
+
+    function parseAndDisplayNutrition(text) {
+      const lines = text.split('\n');
+      const nutrition = {};
+      const mappings = {
+        'energy': ['energie', 'énergie', 'energia', 'energy'],
+        'fat': ['fett', 'vet', 'gras', 'fat'],
+        'saturatedFat': ['gesättigte', 'verzadigde', 'saturadas', 'saturated'],
+        'carbohydrates': ['kohlenhydrate', 'koolhydraten', 'carboidratos', 'carbohydrates'],
+        'sugars': ['zucker', 'suikers', 'azúcares', 'sugars'],
+        'fiber': ['ballaststoffe', 'vezels', 'fibra', 'fiber'],
+        'protein': ['eiweiß', 'eiwitten', 'proteínas', 'protein'],
+        'sodium': ['salz', 'zout', 'sal', 'sodium'],
+      };
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        for (const [key, keywords] of Object.entries(mappings)) {
+          for (const kw of keywords) {
+            if (trimmed.toLowerCase().includes(kw.toLowerCase())) {
+              const match = trimmed.match(/[\d,]+\.?\d*/);
+              if (match) {
+                nutrition[key] = parseFloat(match[0].replace(',', '.'));
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      currentNutrition = nutrition;
+      displayNutrition(nutrition);
+      document.getElementById('nutritionResult').classList.remove('hidden');
+      document.getElementById('scanStatus').textContent = 'Scan complete!';
+    }
+
+    function displayNutrition(nutrition) {
+      const grid = document.getElementById('nutritionGrid');
+      grid.innerHTML = '';
+      const labels = {
+        energy: 'Energy (kJ)', energyKcal: 'Energy (kcal)', fat: 'Fat',
+        saturatedFat: 'Saturated Fat', carbohydrates: 'Carbs', sugars: 'Sugars',
+        fiber: 'Fiber', protein: 'Protein', sodium: 'Sodium',
+      };
+      for (const [key, value] of Object.entries(nutrition)) {
+        const div = document.createElement('div');
+        div.className = 'nutrition-item';
+        div.innerHTML = `<div class="value">${value}</div><div class="label">${labels[key] || key}</div>`;
+        grid.appendChild(div);
+      }
+    }
+
+    function saveAsProduct() {
+      if (!currentNutrition) return;
+      const name = prompt('Product name:');
+      if (!name) return;
+      // In a real app, this would call the products API
+      alert(`Product "${name}" saved with nutrition data!`);
+    }
+
+    function loadProducts() {
+      // In a real app, this would fetch from the products API
+      document.getElementById('productList').innerHTML = '<p>No products yet. Scan a label to create one.</p>';
+    }
+
+    function loadProductsForMealSelect() {
+      // In a real app, this would fetch from the products API
+      const select = document.getElementById('mealProductSelect');
+      select.innerHTML = '<option value="">Select a product...</option>';
+    }
+
+    function createMeal() {
+      const name = document.getElementById('mealName').value;
+      const date = document.getElementById('mealDate').value;
+      if (!name) return;
+      // In a real app, this would call the meals API
+      currentMealId = 'meal-' + Date.now();
+      document.getElementById('mealTitle').textContent = name;
+      document.getElementById('mealDetail').classList.remove('hidden');
+    }
+
+    function addMealItem() {
+      const productId = document.getElementById('mealProductSelect').value;
+      const quantity = parseFloat(document.getElementById('mealQuantity').value);
+      if (!productId || !quantity) return;
+      // In a real app, this would call the meals API
+      alert(`Added ${quantity}g to meal!`);
+    }
+  </script>
+</body>
+</html>
