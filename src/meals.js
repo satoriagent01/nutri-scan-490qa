@@ -6,6 +6,7 @@
 
 import { calculateNutrition } from './nutrition.js';
 import { getProduct } from './products.js';
+import { sumNutrition } from './nutrition.js';
 
 // In-memory storage
 const meals = new Map();
@@ -39,12 +40,12 @@ export function createMeal(name, date) {
 export function addMealItem(mealId, productId, quantity) {
   const meal = meals.get(mealId);
   if (!meal) {
-    return null;
+    throw new Error('Meal not found');
   }
 
   const product = getProduct(productId);
   if (!product) {
-    return null;
+    throw new Error('Product not found');
   }
 
   const nutrition = calculateNutrition(product, quantity);
@@ -77,7 +78,6 @@ export function getMealTotal(mealId) {
   }
 
   const nutritionArray = meal.items.map(item => item.nutrition);
-  const { sumNutrition } = await import('./nutrition.js');
   return sumNutrition(nutritionArray);
 }
 
@@ -96,13 +96,4 @@ export function getMeal(id) {
  */
 export function getAllMeals() {
   return Array.from(meals.values());
-}
-
-/**
- * Deletes a meal by ID.
- * @param {string} id - Meal ID
- * @returns {boolean} - True if deleted, false if not found
- */
-export function deleteMeal(id) {
-  return meals.delete(id);
 }
