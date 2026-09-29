@@ -11,7 +11,7 @@ const products = new Map();
  * @param {Object} data - Product data
  * @param {string} data.name - Product name
  * @param {string} [data.brand] - Brand name
- * @param {Object} data.nutrition - Nutrition data per 100g
+ * @param {Object} [data.nutrition] - Nutrition data per 100g
  * @returns {Object} - The created product with id
  */
 export function createProduct(data) {
